@@ -17,37 +17,8 @@ import {
 import { GoIssueOpened } from "react-icons/go";
 import { PiGitForkBold } from "react-icons/pi";
 import { LuDot } from "react-icons/lu";
-
-interface GitHubUser {
-  login: string;
-  avatar_url: string;
-  id: number;
-  html_url: string;
-  user_view_type: "public" | "private";
-  type: "User" | "Organization";
-}
-
-interface Repo {
-  id: number;
-  name: string;
-  html_url: string;
-  description: string;
-  full_name?: string;
-  owner?: { login: string; avatar_url: string };
-  stargazers_count?: number;
-  forks_count?: number;
-  language?: string;
-  updated_at?: string;
-  topics?: string[];
-  title?: string;
-  user?: { login: string; avatar_url: string; html_url: string };
-  created_at?: string;
-  number?: number;
-  repository_url?: string;
-  body?: string;
-  comments?: number;
-  type?: { name: string };
-}
+import type { GitHubUser, Repo } from "./type/types";
+import { RepoPopup } from "./components/pop-up-more-repo";
 
 export default function GitHubExplorer() {
   const [query, setQuery] = useState("");
@@ -67,9 +38,12 @@ export default function GitHubExplorer() {
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [userRepos, setUserRepos] = useState<Record<string, Repo[]>>({});
   const [loadingUserRepos, setLoadingUserRepos] = useState<string | null>(null);
+  const [allUserRepos, setAllUserRepos] = useState<Repo[]>([]);
+  const [hasMoreRepos, setHasMoreRepos] = useState(true);
+  const [repoPage, setRepoPage] = useState(1);
+  const [showMoreRepos, setShowMoreRepos] = useState(false);
 
-
-  const tabs = [ "Users","Repositories", "Issues", "Discussions"];
+  const tabs = ["Users", "Repositories", "Issues", "Discussions"];
   const [activeTab, setActiveTab] = useState("Users");
 
   const tabIcons: Record<string, JSX.Element> = {
@@ -78,7 +52,22 @@ export default function GitHubExplorer() {
     Issues: <FaBug className="text-yellow-500" />,
     Discussions: <FaComments className="text-purple-500" />,
   };
+  const fetchReposPage = async (username: string, pageNum: number) => {
+    const res = await axios.get<Repo[]>(
+      `https://api.github.com/users/${username}/repos`,
+      { params: { per_page: 5, page: pageNum, sort: "updated" } }
+    );
+    return res.data;
+  };
 
+  const loadMoreRepos = async () => {
+    if (!expandedUser) return;
+    const nextPage = repoPage + 1;
+    const newRepos = await fetchReposPage(expandedUser, nextPage);
+    setAllUserRepos((prev) => [...prev, ...newRepos]);
+    setRepoPage(nextPage);
+    if (newRepos.length < 5) setHasMoreRepos(false);
+  };
   useEffect(() => {
     if (!query) return;
     axios
@@ -88,17 +77,18 @@ export default function GitHubExplorer() {
   }, [debouncedQuickSearch]);
 
   const fetchUserRepos = async (username: string) => {
-  setLoadingUserRepos(username);
-  try {
-    const res = await axios.get(`https://api.github.com/users/${username}/repos?per_page=5`);
-    setUserRepos((prev) => ({ ...prev, [username]: res.data }));
-  } catch {
-    setUserRepos((prev) => ({ ...prev, [username]: [] }));
-  } finally {
-    setLoadingUserRepos(null);
-  }
-};
-
+    setLoadingUserRepos(username);
+    try {
+      const res = await axios.get(
+        `https://api.github.com/users/${username}/repos?per_page=5`
+      );
+      setUserRepos((prev) => ({ ...prev, [username]: res.data }));
+    } catch {
+      setUserRepos((prev) => ({ ...prev, [username]: [] }));
+    } finally {
+      setLoadingUserRepos(null);
+    }
+  };
 
   useEffect(() => {
     if (!query) return;
@@ -127,7 +117,9 @@ export default function GitHubExplorer() {
 
     try {
       const res = await axios.get(urlMap[activeTab]);
-      activeTab === "Users" ? setUsers(res.data.items) : setRepos(res.data.items);
+      activeTab === "Users"
+        ? setUsers(res.data.items)
+        : setRepos(res.data.items);
     } catch {
       setError("Failed to fetch data");
     } finally {
@@ -144,7 +136,9 @@ export default function GitHubExplorer() {
     };
     try {
       const results = await Promise.all(
-        Object.entries(urls).map(([k, u]) => axios.get(u).then((r) => [k, r.data.total_count]))
+        Object.entries(urls).map(([k, u]) =>
+          axios.get(u).then((r) => [k, r.data.total_count])
+        )
       );
       setTabCounts(Object.fromEntries(results));
     } catch {
@@ -203,7 +197,9 @@ export default function GitHubExplorer() {
               key={i}
               onClick={() => setPage(p)}
               className={`px-3 py-1 rounded border ${
-                page === p ? "bg-blue-500 text-blue-400" : "bg-white text-gray-800"
+                page === p
+                  ? "bg-blue-500 text-blue-400"
+                  : "bg-white text-gray-800"
               }`}
             >
               {p}
@@ -223,7 +219,7 @@ export default function GitHubExplorer() {
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
-     <h1 className="text-2xl font-bold mb-4">GitHub Explorer</h1>
+      <h1 className="text-2xl font-bold mb-4">GitHub Explorer</h1>
 
       <div className="relative mb-4">
         <Input
@@ -287,13 +283,17 @@ export default function GitHubExplorer() {
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">Sort by:</span>
           <button
-            className={`flex items-center gap-1 px-2 py-1 rounded border ${sort === "stars" ? "bg-blue-100" : ""}`}
+            className={`flex items-center gap-1 px-2 py-1 rounded border ${
+              sort === "stars" ? "bg-blue-100" : ""
+            }`}
             onClick={() => {
               setSort("stars");
               setSortDir((d) => (d === "asc" ? "desc" : "asc"));
             }}
           >
-            <FaStar /> Stars {sort === "stars" && (sortDir === "asc" ? <FaArrowUp /> : <FaArrowDown />)}
+            <FaStar /> Stars{" "}
+            {sort === "stars" &&
+              (sortDir === "asc" ? <FaArrowUp /> : <FaArrowDown />)}
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -321,93 +321,123 @@ export default function GitHubExplorer() {
         <Skeleton className="h-40 w-full" />
       ) : activeTab === "Users" ? (
         <div className="flex flex-col gap-4 mb-4">
-         {users.map((user) => {
-  const isExpanded = expandedUser === user.login;
-  const repos = userRepos[user.login] || [];
+          {users.map((user) => {
+            const isExpanded = expandedUser === user.login;
+            const repos = userRepos[user.login] || [];
 
-  return (
-    <div key={user.id}>
-      <Card onClick={() => {
-        const willExpand = expandedUser !== user.login;
-        setExpandedUser(willExpand ? user.login : null);
-        if (willExpand && !userRepos[user.login]) {
-          fetchUserRepos(user.login);
-        }
-      }}>
-        <div className="p-4 flex items-center gap-4 cursor-pointer">
-          <img
-            src={user.avatar_url}
-            alt={user.login}
-            className="w-14 h-14 rounded-full"
-          />
-          <div>
-            <a
-              href={user.html_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 font-semibold hover:underline"
-            >
-              {user.login}
-            </a>
-            <div className="flex items-center text-sm text-gray-600 mt-1 gap-4">
-              {user.user_view_type === "public" ? (
-                <span className="flex items-center gap-1">🌐 Public</span>
-              ) : (
-                <span className="flex items-center gap-1">🔒 Private</span>
-              )}
-              <Badge className="flex items-center gap-1">
-                {user.type === "Organization" ? (
-                  <>
-                    <FaBuilding className="text-gray-500" /> Organization
-                  </>
-                ) : (
-                  <>
-                    <FaUser className="text-gray-500" /> User
-                  </>
-                )}
-              </Badge>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {isExpanded && (
-        <div className="ml-6 mt-2">
-          {loadingUserRepos === user.login ? (
-            <Skeleton className="h-20 w-full" />
-          ) : repos.length === 0 ? (
-            <p className="text-sm text-gray-500">No repositories found.</p>
-          ) : (
-            <ul className="space-y-2">
-              {repos.map((repo) => (
-                <Card key={repo.id}>
-                  <CardContent>
-                    <p className="text-blue-600 font-semibold hover:underline">
-                      <a href={repo.html_url} target="_blank" rel="noopener noreferrer">
-                        {repo.full_name}
+            return (
+              <div key={user.id}>
+                <Card
+                  onClick={() => {
+                    const willExpand = expandedUser !== user.login;
+                    setExpandedUser(willExpand ? user.login : null);
+                    if (willExpand && !userRepos[user.login]) {
+                      fetchUserRepos(user.login);
+                    }
+                  }}
+                >
+                  <div className="p-4 flex items-center gap-4 cursor-pointer">
+                    <img
+                      src={user.avatar_url}
+                      alt={user.login}
+                      className="w-14 h-14 rounded-full"
+                    />
+                    <div>
+                      <a
+                        href={user.html_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 font-semibold hover:underline"
+                      >
+                        {user.login}
                       </a>
-                    </p>
-                    <p className="text-sm text-gray-700">{repo.description}</p>
-                    <div className="flex items-center gap-4 text-sm text-gray-600 mt-2">
-                      <span className="flex items-center gap-1">
-                        <FaStar /> {repo.stargazers_count}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <PiGitForkBold /> {repo.forks_count}
-                      </span>
-                      <span>{formatDateDiff(repo.updated_at)}</span>
+                      <div className="flex items-center text-sm text-gray-600 mt-1 gap-4">
+                        {user.user_view_type === "public" ? (
+                          <span className="flex items-center gap-1">
+                            🌐 Public
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1">
+                            🔒 Private
+                          </span>
+                        )}
+                        <Badge className="flex items-center gap-1">
+                          {user.type === "Organization" ? (
+                            <>
+                              <FaBuilding className="text-gray-500" />{" "}
+                              Organization
+                            </>
+                          ) : (
+                            <>
+                              <FaUser className="text-gray-500" /> User
+                            </>
+                          )}
+                        </Badge>
+                      </div>
                     </div>
-                  </CardContent>
+                  </div>
                 </Card>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-})}
 
+                {isExpanded && (
+                  <div className="ml-6 mt-2">
+                    {loadingUserRepos === user.login ? (
+                      <Skeleton className="h-20 w-full" />
+                    ) : repos.length === 0 ? (
+                      <p className="text-sm text-gray-500">
+                        No repositories found.
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {repos.map((repo) => (
+                          <Card key={repo.id}>
+                            <CardContent>
+                              <p className="text-blue-600 font-semibold hover:underline">
+                                <a
+                                  href={repo.html_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {repo.full_name}
+                                </a>
+                              </p>
+                              <p className="text-sm text-gray-700">
+                                {repo.description}
+                              </p>
+                              <div className="flex items-center gap-4 text-sm text-gray-600 mt-2">
+                                <span className="flex items-center gap-1">
+                                  <FaStar /> {repo.stargazers_count}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <PiGitForkBold /> {repo.forks_count}
+                                </span>
+                                <span>{formatDateDiff(repo.updated_at)}</span>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                        <span
+                          onClick={async () => {
+                            setHasMoreRepos(true);
+                            setRepoPage(1);
+                            const firstPage = await fetchReposPage(
+                              user.login,
+                              1
+                            );
+                            setAllUserRepos(firstPage);
+                            setExpandedUser(user.login); // optional
+                            setShowMoreRepos(true); // ← ini penting!
+                          }}
+                          className="cursor-pointer text-blue-600 hover:underline text-sm"
+                        >
+                          See More
+                        </span>
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <ul className="space-y-2">
@@ -507,7 +537,16 @@ export default function GitHubExplorer() {
           ))}
         </ul>
       )}
-  {!loading && renderPagination()}
+      {!loading && renderPagination()}
+      {showMoreRepos && (
+        <RepoPopup
+          title="More Repositories"
+          repos={allUserRepos}
+          loadMore={loadMoreRepos}
+          hasMore={hasMoreRepos}
+          onClose={() => setShowMoreRepos(false)}
+        />
+      )}
     </div>
   );
 }
