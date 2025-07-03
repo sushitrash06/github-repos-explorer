@@ -17,7 +17,7 @@ import {
 import { GoIssueOpened } from "react-icons/go";
 import { PiGitForkBold } from "react-icons/pi";
 import { LuDot } from "react-icons/lu";
-import type { GitHubUser, Repo } from "./type/types";
+import type { GitHubUser, GitHubUserDetail, Repo } from "./type/types";
 import { RepoPopup } from "./components/pop-up-more-repo";
 
 export default function GitHubExplorer() {
@@ -216,6 +216,26 @@ export default function GitHubExplorer() {
       </div>
     );
   };
+
+  const [dataDetail, setDataDetail] = useState<GitHubUserDetail>();
+
+  const fetchUserDetail = async (username: string): Promise<GitHubUserDetail> => {
+  const res = await axios.get(`https://api.github.com/users/${username}`);
+  return res.data;
+};
+
+useEffect(() => {
+  fetchUserDetail("test")
+      .then((data) => {
+        setDataDetail(data);
+      })
+      .catch((error) => {
+        console.error("Error fetching user detail:", error);
+        // setDataDetail();
+      });
+}, []);
+
+console.log(dataDetail);
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
@@ -540,6 +560,7 @@ export default function GitHubExplorer() {
       {!loading && renderPagination()}
       {showMoreRepos && (
         <RepoPopup
+          detail={dataDetail || null}
           title="More Repositories"
           repos={allUserRepos}
           loadMore={loadMoreRepos}
